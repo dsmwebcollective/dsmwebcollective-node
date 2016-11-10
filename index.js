@@ -4,7 +4,9 @@
     const express = require('express');
     const app = express();
     app.use(bodyParser.json());
-    dotenv.load();
+
+    if(process.env.NODE_ENV !== 'production')
+        dotenv.load();
 
     const dsmGithub = require('./dsm-github');
     const slack = require('./slack');
