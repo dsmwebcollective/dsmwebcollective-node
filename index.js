@@ -1,6 +1,6 @@
-const git = require('nodegit');
 const yaml = require('js-yaml');
 const dotenv = require('dotenv');
+const request = require('es6-request');
 const fs = require('fs');
 const bodyParser = require('body-parser');
 const express = require('express');
@@ -9,68 +9,56 @@ app.use(bodyParser.json());
 
 dotenv.load();
 
-const fileWasModified = (req, path) => {
-    return req.body.commits.some((commit) => {
-        return commit.modified.includes(path);
-    });
-};
+const EVENTS_PATH = '_data/events.yml';
 
-const getNewEvents = (req) => {
-    const previousHead = req.body.before;
-    const currentHead = req.body.after;
-    git.clone(process.env.GIT_REPO, 'tmp')
-    .then((repo) => Promise.all([
-        repo.getCommit(previousHead),
-        repo.getCommit(currentHead)]))
-    .then((commits) => Promise.all(
-        commits.map((commit) => commit.getEntry('_data/events.yml'))))
-    .then((entries) => Promise.all(
-        entries.map((entry) => entry.getBlob())))
-    .then((files) => {
-        const [previousEvents, currentEvents] = files.map((contents) => {
-            return yaml.safeLoad(String(contents));
-        });
-        return currentEvents.filter((currentEvent) => {
-            return !previousEvents.some((previousEvent) =>
-                eventsAreTheSame(previousEvent, currentEvent));
+getEntries = (commit, ymlRelativePath) => {
+    return new Promise((fulfill, reject) => {
+        request.get(`https://raw.githubusercontent.com/${process.env.GITHUB_USERNAME}/dsmwebcollective.github.io/${commit}/${ymlRelativePath}`)
+        .then((response) => {
+            fulfill(yaml.safeLoad(response[0]) || []);
         });
     });
 };
 
-const eventsAreTheSame = (event1, event2) => {
-    return event1.title === event2.title &&
-           event1.group === event2.group &&
-           event1.location === event2.location &&
-           event1.details_url === event2.details_url &&
-           event1.date === event2.date &&
-           event2.time === event2.time;
+// Assumes the two objects share the same properties
+objectsAreEqual = (obj1, obj2) => {
+    return Object.keys(obj1).every((key) => obj1[key] === obj1[key]);
 };
+
+getNewEntries = (req, entryFilePath) => {
+    return new Promise((fulfill, reject) => {
+        if(!req.body.before || !req.body.after) {
+            throw 'Request is missing before and/or after commit hashes';
+        }
+
+        const previousCommit = req.body.before;
+        const currentCommit = req.body.after;
+
+        Promise.all([
+            getEntries(previousCommit, entryFilePath),
+            getEntries(currentCommit, entryFilePath),
+        ]).then((values) => {
+            const [previousEntries, currentEntries] = values;
+            const newEntries = currentEntries.filter((currentEntry) => 
+                !previousEntries.some((previousEntry) => objectsAreEqual(previousEntry, currentEntry)));
+            fulfill(newEntries);
+        });
+    });
+}
 
 app.post('/', (req, res) => {
-    if(fileWasModified(req, "_data/events.yml")) {
-        getNewEvents(req)
-        .then((events) => {
-            if(events.length > 0) {
-                console.log('An event was added!');
-            } else {
-                console.log('No events added!');
-            }
-        })
-        .catch((err) => {
-            console.log(error);
-        });
-    }
+    getNewEntries(req, EVENTS_PATH)
+    .then((newEvents) => {
+        console.log(`${newEvents.length} new events!`);
+    })
+    .catch((err) => {
+        console.log(`An error occurred retrieving new events: ${err}`);
+    });
+
     res.end();
 });
 
-app.post('/test', (req, res) => {
-    const fs = require('fs');
-    const doc = yaml.safeLoad(fs.readFileSync('test.yml', 'utf8'));
-    console.log(doc);
-    res.end();
-});
-
-const port = process.env.PORT || 8000;
+const port = process.argv[2] || process.env.PORT || 8000;
 app.listen(port, () => {
     console.log(`App listening on port ${port}`);
 });
