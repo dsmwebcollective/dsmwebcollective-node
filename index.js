@@ -7,14 +7,17 @@
     dotenv.load();
 
     const dsmGithub = require('./dsm-github');
+    const slack = require('./slack');
 
     _postNewEventsToSlack = (req) => {
         dsmGithub.getNewEventEntries(req)
         .then((newEvents) => {
-            console.log(`${newEvents.length} new events!`);
+            newEvents.forEach((event) => {
+                slack.postEventToSlack(event);
+            });
         })
         .catch((err) => {
-            console.log(`An error occurred retrieving new events: ${err}`);
+            console.log(`An error occurred posting events to Slack: ${err}`);
         });
     };
 
