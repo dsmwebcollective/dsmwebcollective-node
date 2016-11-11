@@ -23,8 +23,21 @@
         });
     };
 
+    _postNewJobsToSlack = (req) => {
+        dsmGithub.getNewJobEntries(req)
+        .then((newJobs) => {
+            newJobs.forEach((job) => {
+                slack.postJobToSlack(job);
+            });
+        })
+        .catch((err) => {
+            console.log(`An error occurred posting jobs to Slack: ${err}`);
+        });
+    };
+
     app.post('/', (req, res) => {
         _postNewEventsToSlack(req);
+        _postNewJobsToSlack(req);
         res.end();
     });
 
