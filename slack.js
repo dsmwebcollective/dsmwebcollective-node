@@ -24,8 +24,6 @@
 *Details*:\t${event.details_url || '_Unknown_'}
 *Date*:\t${event.date || '_Unknown_'}
 *Time*:\t${event.time || '_Unknown_'}
-
-----------------------------------------------
         `;
     };
 
