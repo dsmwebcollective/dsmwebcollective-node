@@ -1,57 +1,58 @@
 {
     const Slack = require('slack-node');
 
-    postEventToSlack = (event) => {
+    buildEventAttachment = (event) => {
+        return {
+            title: event.title,
+            title_link: event.details_url,
+            text: `Group: ${event.group}\nLocation: ${event.location}\nDate: ${event.date}\nTime: ${event.time}`
+        };
+    };
+
+    buildJobAttachment = (job) => {
+        return {
+            title: job.title,
+            title_link: job.url,
+            text: job.company
+        };
+    };
+
+    postNewEventsToSlack = (events) => {
+        _postToSlack(
+            '#events',
+            'One or more events were just added to http://dsmwebcollective.com/events!',
+            events.map((event) => buildEventAttachment(event)),
+            process.env.SLACK_USERNAME,
+            process.env.SLACK_EVENTS_WEBHOOK_URI);
+    };
+
+    postNewJobsToSlack = (jobs) => {
+        _postToSlack(
+            '#jobs',
+            'One or more jobs were just added to http://dsmwebcollective.com/jobs!',
+            jobs.map((job) => buildJobAttachment(job)),
+            process.env.SLACK_USERNAME,
+            process.env.SLACK_JOBS_WEBHOOK_URI)
+    };
+
+    _postToSlack = (channel, title, attachments, username, webhookUri) => {
         slack = new Slack();
-        slack.setWebhook(process.env.SLACK_EVENTS_WEBHOOK_URI);
+        slack.setWebhook(webhookUri);
 
         slack.webhook({
-            channel: process.env.SLACK_EVENTS_CHANNEL,
-            username: process.env.SLACK_USERNAME,
-            text: _getEventText(event)
+            channel: channel,
+            username: username,
+            text: title,
+            attachments: attachments
         }, (err, response) => {
             if(err) throw err;
         });
-    };
-
-    _getEventText = (event) => {
-        return `
-*An event was added!*
-
-*Title*:\t${event.title || '_Unknown_'}
-*Group*:\t${event.group || '_Unknown_'}
-*Location*:\t${event.location || '_Unknown_'}
-*Details*:\t${event.details_url || '_Unknown_'}
-*Date*:\t${event.date || '_Unknown_'}
-*Time*:\t${event.time || '_Unknown_'}
-        `;
-    };
-
-    postJobToSlack = (job) => {
-        slack = new Slack();
-        slack.setWebhook(process.env.SLACK_JOBS_WEBHOOK_URI);
-
-        slack.webhook({
-            channel: process.env.SLACK_JOBS_CHANNEL,
-            username: process.env.SLACK_USERNAME,
-            text: _getJobText(job)
-        }, (err, response) => {
-            if(err) throw err;
-        });
-    };
-
-    _getJobText = (job) => {
-        return `
-*A job was added!*
-
-*Title*:\t${job.title || '_Unknown_'}
-*Company*:\t${job.company || '_Unknown_'}
-*Url*:\t${job.url || '_Unknown_'}
-        `;
     };
 
     module.exports = {
-        postEventToSlack: postEventToSlack,
-        postJobToSlack: postJobToSlack
+        postNewEventsToSlack: postNewEventsToSlack,
+        postNewJobsToSlack: postNewJobsToSlack,
+        buildEventAttachment: buildEventAttachment,
+        buildJobAttachment: buildJobAttachment
     };
 }

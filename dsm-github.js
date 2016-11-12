@@ -1,63 +1,71 @@
 {
     const yaml = require('js-yaml');
     const request = require('es6-request');
+    
+    const util = require('./util');
 
     const EVENTS_PATH = '_data/events.yml';
     const JOBS_PATH = '_data/jobs.yml';
     const GROUPS_PATH = '_data/groups.yml';
 
-    getNewEventEntries = (req) => {
-        return getNewEntries(req, EVENTS_PATH);
-    };
+    class Entry {
+        constructor(ymlRelativePath) {
+            this.ymlRelativePath = ymlRelativePath;
+        }
 
-    getNewJobEntries = (req) => {
-        return getNewEntries(req, JOBS_PATH);
-    };
+        getEntries(commit) {
+            return new Promise((fulfill, reject) => {
+                request.get(this._getGithubUrl(process.env.GITHUB_USERNAME, commit, this.ymlRelativePath))
+                .then((response) => {
+                    fulfill(yaml.safeLoad(response[0]) || []);
+                });
+            });
+        }
 
-    getNewGroupEntries = (req) => {
-        return getNewEntries(req, GROUPS_PATH);
+        getNewEntries(beforeCommit, afterCommit) {
+            return new Promise((fulfill, reject) => {
+                Promise.all([
+                    this.getEntries(beforeCommit),
+                    this.getEntries(afterCommit),
+                ]).then((values) => {
+                    const [previousEntries, currentEntries] = values;
+                    const newEntries = currentEntries.filter((currentEntry) => 
+                        !previousEntries.some((previousEntry) => util.objectsAreEqual(previousEntry, currentEntry)));
+                    fulfill(newEntries);
+                });
+            });
+        }
+
+        getLatestEntries() {
+            return this.getEntries('master');
+        }
+
+        _getGithubUrl(username, commit, file) {
+            return `https://raw.githubusercontent.com/${username}/dsmwebcollective.github.io/${commit}/${file}`;
+        }
     }
 
-    getNewEntries = (req, entryFilePath) => {
-        return new Promise((fulfill, reject) => {
-            if(!req.body || !req.body.before || !req.body.after) {
-                throw 'Request is missing body.before and/or body.after commit hashes';
-            }
-
-            const previousCommit = req.body.before;
-            const currentCommit = req.body.after;
-
-            Promise.all([
-                getEntries(previousCommit, entryFilePath),
-                getEntries(currentCommit, entryFilePath),
-            ]).then((values) => {
-                const [previousEntries, currentEntries] = values;
-                const newEntries = currentEntries.filter((currentEntry) => 
-                    !previousEntries.some((previousEntry) => _objectsAreEqual(previousEntry, currentEntry)));
-                fulfill(newEntries);
-            });
-        });
+    class EventEntry extends Entry {
+        constructor() {
+            super(EVENTS_PATH);
+        }
     }
-    
-    getEntries = (commit, ymlRelativePath) => {
-        return new Promise((fulfill, reject) => {
-            request.get(`https://raw.githubusercontent.com/${process.env.GITHUB_USERNAME}/dsmwebcollective.github.io/${commit}/${ymlRelativePath}`)
-            .then((response) => {
-                fulfill(yaml.safeLoad(response[0]) || []);
-            });
-        });
-    };
 
-    // Assumes the two objects share the same properties
-    _objectsAreEqual = (obj1, obj2) => {
-        return Object.keys(obj1).every((key) => obj1[key] === obj2[key]);
-    };
+    class JobEntry extends Entry {
+        constructor() {
+            super(JOBS_PATH);
+        }
+    }
+
+    class GroupEntry extends Entry {
+        constructor() {
+            super(GROUPS_PATH);
+        }
+    }
 
     module.exports = {
-        getNewEventEntries: getNewEventEntries,
-        getNewJobEntries: getNewJobEntries,
-        getNewGroupEntries: getNewGroupEntries,
-        getNewEntries: getNewEntries,
-        getEntries: getEntries
+        event: new EventEntry(),
+        job: new JobEntry(),
+        group: new GroupEntry()
     }
 }
